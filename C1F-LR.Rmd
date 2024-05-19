@@ -219,19 +219,32 @@ women_test_age <- test_age %>%
 
 ### 4.1.1 Women LR - train
 ```{r}
-women_model_1 <- glm(Shorter.lifespan ~ Contains.four, data = women_train_age, family = binomial)
+w_train_model <- glm(Contains.super ~ Age.of.death, data = women_train_age, family = "binomial")
 ```
 ```{r}
-women_train <- women_train_age %>% 
-  mutate(pred = predict(women_model_1, newdata = women_train_age, type = "response")) %>% 
+w_train_preds <-  women_train_age %>% 
+  add_predictions(w_train_model, type = "response") %>% 
   mutate(
     outcome = if_else(condition = pred > 0.5,
                       true = 1,
                       false = 0)
   )
+
+w_train_preds %>% 
+  mutate(
+    correct = if_else(
+      condition = Contains.four == outcome,
+      true = 1,
+      false = 0
+    )
+  ) %>% 
+  summarize(
+    total_correct = sum(correct),
+    accuracy = total_correct/n()
+  )
 ```
 ```{r}
-
+logistic_sv1 <- cv.glm(women_train_age, w_train_model, cost, K = 5)
 ```
 
 
