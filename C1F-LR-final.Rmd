@@ -1,0 +1,550 @@
+---
+title: "CDS 101 Final Project"
+author: "Group 4"
+date: "`r Sys.Date()`"
+documentclass: article
+geometry: margin=1in
+fontsize: 11pt
+output:
+  pdf_document:
+    highlight: tango
+    toc: false
+    df_print: kable
+    fig_caption: no
+    number_sections: no
+    dev: pdf
+---
+
+# 0. Set-up & Introduction
+```{r set up, include=FALSE}
+#Library
+suppressPackageStartupMessages(library(tidyverse))
+suppressPackageStartupMessages(library(ggmosaic))
+suppressPackageStartupMessages(library(modelr))
+suppressPackageStartupMessages(library(boot))
+suppressPackageStartupMessages(library(broom))
+options(tigris_use_cache = TRUE)
+suppressPackageStartupMessages(library(infer))
+suppressPackageStartupMessages(library(dplyr))
+suppressPackageStartupMessages(library(caret))
+
+#Data set
+df <- read_csv("AgeDataset.csv")
+
+#Helper functions
+#load("bootstrap_cohens_d.RData")
+```
+>You can write introduction here.
+
+# 1. Manipulating dataset
+```{r}
+#Rename
+df_renamed <- df %>%
+  rename(
+    Birth.year = 'Birth year',
+    Death.year = 'Death year',
+    Manner.of.death = 'Manner of death',
+    Age.of.death = 'Age of death'
+  )
+
+#Missing value
+df_renamed[
+  is.na(df_renamed$Birth.year) | df_renamed$Birth.year == "" |
+  is.na(df_renamed$Death.year) | df_renamed$Death.year == "" |
+  is.na(df_renamed$Country) | df_renamed$Country == "" |
+  is.na(df_renamed$Occupation) | df_renamed$Occupation == "" |
+  is.na(df_renamed$Manner.of.death) | df_renamed$Manner.of.death == "",
+  c("Birth.year", "Death.year", "Country", "Occupation", "Manner.of.death")
+] <- NA
+```
+```{r}
+#Unnecessary
+df_renamed <- df_renamed %>% 
+  select(- `Short description`) 
+
+#Filter (only 'Male' or 'Female')
+df_filtered <- df_renamed %>% filter(Gender %in% c("Male", "Female"))
+
+#Mutate group 4/0
+AgeDataset <- df_filtered %>%
+  mutate(Contains.four = ifelse(grepl("4", as.character(Birth.year)), 1, 0)) %>% 
+  mutate(Contains.super = as.logical(Contains.four)) %>%
+  filter(Birth.year > 0)
+```
+> We renamed the variables and filtered the gender into only two due to the complexity. More, we add two variable that shows number or status (true/false) of either they have number 4 in their birth year or not.
+
+# 2. Train/Test dataset
+```{r}
+# Set seed for reproducibility
+set.seed(42)
+
+# Split (3:7)
+trainIndex <- createDataPartition(AgeDataset$Gender, p = 0.7, list = FALSE, times = 1)
+train_age <- AgeDataset[trainIndex, ]
+test_age <- AgeDataset[-trainIndex, ]
+
+# Save to CSV files
+write.csv(train_age, "train_age.csv", row.names = FALSE)
+write.csv(test_age, "test_age.csv", row.names = FALSE)
+
+# Check
+print("Training and testing datasets have been saved successfully.")
+```
+> For the later part, logistic regression, we divded into 2 dataset, train_age & test_age.
+
+# 3. EDA
+
+## 3.1. Occupation
+
+## 3.2. Manner of death
+
+# 4. Hypothesis test
+
+> Since female and male does not have different value of the average life span, out team decided to do the hypothesis test 2 times for each gender. The other genders are not considered due to the complexity. This hypothesis is not based on the either train_age or test_age but the total dataset.
+
+# 4.1. Women
+
+## 4.1.1. Filter the data
+```{r}
+female_data <- AgeDataset %>%
+  filter(Gender == 'Female')
+
+female_data <- female_data %>%
+  mutate(Contains.super = as.factor(Contains.super))
+
+levels(female_data$Contains.super)
+```
+
+## 4.1.2. Null distribution
+```{r}
+set.seed(123)
+f_null <- female_data %>%
+  specify(formula = Age.of.death ~ Contains.super) %>%
+  hypothesize(null = "independence") %>%
+  generate(reps = 1000, type = "permute") %>% 
+  calculate(stat = "diff in means", order = c("TRUE", "FALSE"))
+```
+> Why not "true"/"false" but "1", "0"?
+
+## 4.1.3. Observed difference
+```{r}
+f_observed_diff <- female_data %>%
+  specify(response = Age.of.death, explanatory = Contains.super) %>%
+  calculate(stat = "diff in means", order = c("TRUE", "FALSE"))
+```
+
+## 4.1.4. P-value & visualization
+```{r}
+f_p_value <- f_null %>%
+  get_p_value(obs_stat = f_observed_diff, direction = "both")
+
+f_null %>%
+  visualize() +
+  shade_p_value(obs_stat = f_observed_diff, direction = "both") +
+  labs(title = "Simulation Based Null Distribution",
+       x = "Difference in Means",
+       y = "Count")
+```
+```{r}
+print(f_p_value)
+```
+
+> Can it be different result?
+> We should reject the null distribution, therefore the lifespan is different.
+
+# 4.2. Men
+
+## 4.2.1. Filter the data
+```{r}
+male_Data <- AgeDataset %>%
+  filter(Gender == 'Male')
+
+male_Data <- male_Data %>%
+  mutate(Contains.super = as.factor(Contains.super))
+
+levels(male_Data$Contains.super)
+```
+
+## 4.2.2. Null distribution
+```{r}
+set.seed(999)
+m_null <- male_Data %>%
+  specify(formula = Age.of.death ~ Contains.super) %>%
+  hypothesize(null = "independence") %>%
+  generate(reps = 1000, type = "permute") %>%
+  calculate(stat = "diff in means", order = c("TRUE", "FALSE"))
+```
+
+## 4.2.3. Observed difference
+```{r}
+m_observed_diff <- male_Data %>%
+  specify(Age.of.death ~ Contains.super) %>%
+  calculate(stat = "diff in means", order = c("TRUE", "FALSE"))
+```
+
+## 4.2.4. P-value & visualization
+```{r}
+m_p_value <- m_null %>%
+  get_p_value(obs_stat = m_observed_diff, direction = "both")
+
+m_null %>%
+  visualize() +
+  shade_p_value(obs_stat = m_observed_diff, direction = "both") +
+  labs(title = "Visualization Null Distribution for Male Lifespan",
+       x = "Difference in Means",
+       y = "Count")
+```
+```{r}
+print(m_p_value)
+```
+> For male... it is not right?
+
+# 5. Trained Graph
+
+## 5.1. Quantitative Vari Graph
+
+### 5.1.1. percentaged
+```{r}
+train_age %>% 
+  pivot_longer(cols = Age.of.death|Birth.year,
+               names_to = "info1",
+               values_to = "value1") %>% 
+  ggplot() +
+  geom_histogram(
+    mapping = aes(
+      x = value1,
+      y = after_stat(count) / sum(after_stat(count)) * 100,
+      fill = Contains.super
+    ),
+    position = "identity",
+    alpha = 0.6
+  ) +
+  facet_wrap(~info1, scales = "free") +
+  labs(
+    x = "value",
+    y = "frequency",
+    title = "Histogram of superstition due to age of death and birth year"
+  )
+```
+
+### 5.1.2. not-percentaged
+```{r}
+train_age %>% 
+  pivot_longer(cols = Age.of.death|Birth.year,
+               names_to = "info1",
+               values_to = "value1") %>% 
+  ggplot() +
+  geom_histogram(
+    mapping = aes(
+      x = value1,
+      fill = Contains.super
+    ),
+    position = "identity",
+    alpha = 0.6
+  ) +
+  facet_wrap(~info1, scales = "free") +
+  labs(
+    x = "value",
+    y = "frequency",
+    title = "Histogram of superstition due to age of death and birth year"
+  )
+```
+
+## 5.2. Qualitative Vari Graph
+
+### 5.2.1. Top-filtered
+```{r}
+# Count and get the top 10 Occupations
+top_occupations <- train_age %>%
+  count(Occupation) %>%
+  top_n(10, wt = n) %>%
+  pull(Occupation)
+
+# Count and get the top 10 Countries
+top_countries <- train_age %>%
+  count(Country) %>%
+  top_n(10, wt = n) %>%
+  pull(Country)
+
+# Filter the train_age dataframe based on top Occupations and Countries
+top_filtered <- train_age %>%
+  filter(Occupation %in% top_occupations) %>% 
+  filter(Country %in% top_countries)
+```
+
+### 5.2.2. percentaged
+```{r}
+# Pivot the dataset and plot
+top_filtered %>%
+  pivot_longer(cols = c(Country, Occupation, Gender), names_to = "info2", values_to = "value2") %>%
+  ggplot() +
+  geom_bar(
+    mapping = aes(
+      x = value2, 
+      y = after_stat(count) / sum(after_stat(count)) * 100,
+      fill = Contains.super), alpha = 0.6) +
+  facet_wrap(~info2, scales = "free") +
+  labs(
+    x = "value", 
+    y = "frequency", 
+    title = "Bar graph of superstition due to occupation,gender, and country"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+### 5.2.3. not-percentaged
+```{r}
+# Pivot the dataset and plot
+top_filtered %>%
+  pivot_longer(cols = c(Country, Occupation, Gender), names_to = "info2", values_to = "value2") %>%
+  ggplot() +
+  geom_bar(
+    mapping = aes(
+      x = value2, 
+      fill = Contains.super), alpha = 0.6) +
+  facet_wrap(~info2, scales = "free") +
+  labs(
+    x = "value", 
+    y = "frequency", 
+    title = "Bar graph of superstition due to occupation,gender, and country"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+## 5.3 Mosaic Graph
+```{r}
+# Filter out rows with missing values in the relevant columns
+train_imputed <- top_filtered %>% 
+  filter(!is.na(Gender) & !is.na(Occupation) & !is.na(Contains.super))
+
+# Convert necessary columns to factors
+train_imputed <- train_imputed %>%
+  mutate(Gender = as.factor(Gender),
+         Occupation = as.factor(Occupation),
+         Contains.super = as.factor(Contains.super))
+```
+```{r}
+# Create the mosaic plot
+train_imputed %>% 
+  ggplot() +
+  geom_mosaic(aes(x = product(Gender, Occupation), fill = Gender)) +
+  facet_grid(. ~ Contains.super, scales = "free") +
+  labs(x = "Occupation", 
+       y = "Gender", 
+       title = "Mosaic Plot of Superstition") +
+  theme_minimal()+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 8))
+```
+
+# 6. Logistic Regression
+
+### 6.1. Women LR 
+
+## 6.1.1. Women-Manipulate the data
+```{r}
+# Count and get the top 10 Occupations
+top_occupations_2 <- test_age %>%
+  count(Occupation) %>%
+  top_n(10, wt = n) %>%
+  pull(Occupation)
+
+# Count and get the top 10 Countries
+top_countries_2 <- test_age %>%
+  count(Country) %>%
+  top_n(10, wt = n) %>%
+  pull(Country)
+
+# Filter the train_age dataframe based on top Occupations and Countries
+top_filtered_2 <- test_age %>%
+  filter(Occupation %in% top_occupations_2) %>% 
+  filter(Country %in% top_countries_2)
+```
+```{r}
+# Filter out rows with missing values in the relevant columns
+test_imputed <- top_filtered_2 %>% 
+  filter(!is.na(Gender) & !is.na(Occupation) & !is.na(Contains.super))
+
+# Convert necessary columns to factors
+test_imputed <- test_imputed %>%
+  mutate(Gender = as.factor(Gender),
+         Occupation = as.factor(Occupation),
+         Contains.super = as.factor(Contains.super))
+```
+```{r}
+women_train_age <- train_imputed %>% 
+    filter(Gender == 'Female') %>% 
+    mutate(Shorter.lifespan = as.factor(Age.of.death < median(Age.of.death, na.rm = TRUE)))
+
+women_test_age <- test_imputed %>% 
+    filter(Gender == 'Female') %>% 
+    mutate(Shorter.lifespan = as.factor(Age.of.death < median(Age.of.death, na.rm = TRUE)))
+```
+
+### 6.1.2. Modeling/pred - train
+```{r}
+w_train_model <- glm(Contains.super ~ Age.of.death, data = women_train_age, family = "binomial")
+```
+```{r}
+w_train_preds <-  women_train_age %>% 
+  add_predictions(w_train_model, type = "response") %>% 
+  mutate(
+    outcome = if_else(condition = pred > 0.5,
+                      true = 1,
+                      false = 0)
+  )
+
+w_train_preds %>% 
+  mutate(
+    correct = if_else(
+      condition = Contains.four == outcome,
+      true = 1,
+      false = 0
+    )
+  ) %>% 
+  summarize(
+    total_correct = sum(correct),
+    accuracy = total_correct/n()
+  )
+```
+
+### 6.1.3 Cross validation1 - train
+```{r}
+# Cost function for cross validation
+cost <- function(obs, pred) {
+  outcome <- pred > 0.5
+  return(1 - (sum(obs == outcome) / length(obs)))
+}
+
+logistic_sv1 <- cv.glm(women_train_age, w_train_model, cost, K = 5)
+
+logistic_sv1$delta
+```
+
+### 6.1.4. Modeling/pred - test
+```{r}
+w_test_model <- glm(Contains.super ~ Age.of.death + Occupation + Country, 
+                    data = women_test_age, family = "binomial")
+```
+```{r}
+w_test_preds <-  women_test_age %>% 
+  add_predictions(w_test_model, type = "response") %>% 
+  mutate(
+    outcome = if_else(condition = pred > 0.5,
+                      true = 1,
+                      false = 0)
+  )
+
+w_test_preds %>% 
+  mutate(
+    correct = if_else(
+      condition = Contains.four == outcome,
+      true = 1,
+      false = 0
+    )
+  ) %>% 
+  summarize(
+    total_correct = sum(correct),
+    accuracy = total_correct/n()
+  )
+```
+
+### 6.1.5. Cross validation2 - test
+```{r}
+# Cost function for cross validation
+cost <- function(obs, pred) {
+  outcome <- pred > 0.5
+  return(1 - (sum(obs == outcome) / length(obs)))
+}
+
+logistic_sv2 <- cv.glm(women_test_age, w_test_model, cost, K = 5)
+
+logistic_sv2$delta
+```
+
+### 6.2. Men LR 
+
+## 6.2.1.  Men-Manipulate the data
+```{r}
+men_train_age <- train_imputed %>% 
+    filter(Gender == 'Male') %>% 
+    mutate(Shorter.lifespan = as.factor(Age.of.death < median(Age.of.death, na.rm = TRUE)))
+
+men_test_age <- test_imputed %>% 
+    filter(Gender == 'Male') %>% 
+    mutate(Shorter.lifespan = as.factor(Age.of.death < median(Age.of.death, na.rm = TRUE)))
+```
+
+
+### 6.2.2. Modeling/pred - train
+```{r}
+m_train_model <- glm(Contains.super ~ Age.of.death, data = men_train_age, family = "binomial")
+```
+```{r}
+m_train_preds <-  men_train_age %>% 
+  add_predictions(m_train_model, type = "response") %>% 
+  mutate(
+    outcome = if_else(condition = pred > 0.5,
+                      true = 1,
+                      false = 0)
+  )
+
+m_train_preds %>% 
+  mutate(
+    correct = if_else(
+      condition = Contains.four == outcome,
+      true = 1,
+      false = 0
+    )
+  ) %>% 
+  summarize(
+    total_correct = sum(correct),
+    accuracy = total_correct/n()
+  )
+```
+
+### 6.2.3. Cross validation3 - train
+```{r}
+logistic_sv3 <- cv.glm(men_train_age, m_train_model, cost, K = 5)
+
+logistic_sv3$delta
+```
+
+### 6.2.4. Modeling/pred - test
+```{r}
+m_test_model <- glm(Contains.super ~ Age.of.death + Occupation + Country,
+                    data = men_test_age, family = "binomial")
+```
+```{r}
+m_test_preds <-  men_test_age %>% 
+  add_predictions(m_test_model, type = "response") %>% 
+  mutate(
+    outcome = if_else(condition = pred > 0.5,
+                      true = 1,
+                      false = 0)
+  )
+
+m_test_preds %>% 
+  mutate(
+    correct = if_else(
+      condition = Contains.four == outcome,
+      true = 1,
+      false = 0
+    )
+  ) %>% 
+  summarize(
+    total_correct = sum(correct),
+    accuracy = total_correct/n()
+  )
+```
+
+### 6.2.5. Cross validation3 - test
+```{r}
+logistic_sv4 <- cv.glm(men_test_age, m_test_model, cost, K = 5)
+
+logistic_sv4$delta
+```
+
+# 7. Conclusion
+> You can write conlcusion here.
