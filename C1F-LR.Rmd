@@ -1,0 +1,245 @@
+---
+title: "C1F-LR"
+output: pdf_document
+date: "2024-05-19"
+---
+
+# 0. Set-up
+```{r set up, include=FALSE}
+#Library
+suppressPackageStartupMessages(library(tidyverse))
+suppressPackageStartupMessages(library(ggmosaic))
+suppressPackageStartupMessages(library(modelr))
+suppressPackageStartupMessages(library(boot))
+suppressPackageStartupMessages(library(infer))
+suppressPackageStartupMessages(library(dplyr))
+suppressPackageStartupMessages(library(caret))
+```
+
+# 1. Train/Test dataset
+```{r}
+# File
+file_path <- "AgeDataset.csv"
+
+# Data set
+df <- read.csv(file_path)
+
+# Filter (only 'Male' or 'Female')
+df_filtered <- df %>% filter(Gender %in% c("Male", "Female"))
+
+# Set seed for reproducibility
+set.seed(42)
+
+# Split (3:7)
+trainIndex <- createDataPartition(df_filtered$Gender, p = 0.7, list = FALSE, times = 1)
+train_df <- df_filtered[trainIndex, ]
+test_df <- df_filtered[-trainIndex, ]
+
+# Save to CSV files
+write.csv(train_df, "train_age.csv", row.names = FALSE)
+write.csv(test_df, "test_age.csv", row.names = FALSE)
+
+# Check
+print("Training and testing datasets have been saved successfully.")
+```
+
+# 2. Tidying the dataset
+```{r}
+#takeout-train
+train_df <- train_df %>% select(- Short.description) 
+
+#takeout-test
+test_df <- test_df %>% select(- Short.description) 
+```
+```{r}
+#train grouping 
+train_age <- train_df %>%
+  mutate(Contains.four = ifelse(grepl("4", as.character(Birth.year)), 1, 0)) %>% 
+  mutate(Contains.super = as.logical(Contains.four)) %>%
+  filter(Birth.year > 0)
+
+#test grouping
+test_age <- test_df %>%
+  mutate(Contains.four = ifelse(grepl("4", as.character(Birth.year)), 1, 0)) %>%
+  mutate(Contains.super = as.logical(Contains.four)) %>%
+  filter(Birth.year > 0)
+```
+
+# 3. Trained Graph
+
+## 3.1. Quantitative Vari Graph
+
+### 3.1.1. percentaged
+```{r}
+train_age %>% 
+  pivot_longer(cols = Age.of.death|Birth.year,
+               names_to = "info1",
+               values_to = "value1") %>% 
+  ggplot() +
+  geom_histogram(
+    mapping = aes(
+      x = value1,
+      y = after_stat(count) / sum(after_stat(count)) * 100,
+      fill = Contains.super
+    ),
+    position = "identity",
+    alpha = 0.6
+  ) +
+  facet_wrap(~info1, scales = "free") +
+  labs(
+    x = "value",
+    y = "frequency",
+    title = "Histogram of superstition due to age of death and birth year"
+  )
+```
+
+### 3.1.2. not-percentaged
+```{r}
+train_age %>% 
+  pivot_longer(cols = Age.of.death|Birth.year,
+               names_to = "info1",
+               values_to = "value1") %>% 
+  ggplot() +
+  geom_histogram(
+    mapping = aes(
+      x = value1,
+      fill = Contains.super
+    ),
+    position = "identity",
+    alpha = 0.6
+  ) +
+  facet_wrap(~info1, scales = "free") +
+  labs(
+    x = "value",
+    y = "frequency",
+    title = "Histogram of superstition due to age of death and birth year"
+  )
+```
+
+## 3.2. Qualitative Vari Graph
+
+### 3.2.1. Top-filtered
+```{r}
+# Count and get the top 10 Occupations
+top_occupations <- train_age %>%
+  count(Occupation) %>%
+  top_n(10, wt = n) %>%
+  pull(Occupation)
+
+# Count and get the top 10 Countries
+top_countries <- train_age %>%
+  count(Country) %>%
+  top_n(10, wt = n) %>%
+  pull(Country)
+
+# Filter the train_age dataframe based on top Occupations and Countries
+top_filtered <- train_age %>%
+  filter(Occupation %in% top_occupations) %>% 
+  filter(Country %in% top_countries)
+```
+
+### 3.2.2. percentaged
+```{r}
+# Pivot the dataset and plot
+top_filtered %>%
+  pivot_longer(cols = c(Country, Occupation, Gender), names_to = "info2", values_to = "value2") %>%
+  ggplot() +
+  geom_bar(
+    mapping = aes(
+      x = value2, 
+      y = after_stat(count) / sum(after_stat(count)) * 100,
+      fill = Contains.super), alpha = 0.6) +
+  facet_wrap(~info2, scales = "free") +
+  labs(
+    x = "value", 
+    y = "frequency", 
+    title = "Bar graph of superstition due to occupation,gender, and country"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+### 3.2.3. not-percentaged
+```{r}
+# Pivot the dataset and plot
+top_filtered %>%
+  pivot_longer(cols = c(Country, Occupation, Gender), names_to = "info2", values_to = "value2") %>%
+  ggplot() +
+  geom_bar(
+    mapping = aes(
+      x = value2, 
+      fill = Contains.super), alpha = 0.6) +
+  facet_wrap(~info2, scales = "free") +
+  labs(
+    x = "value", 
+    y = "frequency", 
+    title = "Bar graph of superstition due to occupation,gender, and country"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+## 3.3 Mosaic Graph
+```{r}
+# Filter out rows with missing values in the relevant columns
+train_imputed <- top_filtered %>% 
+  filter(!is.na(Gender) & !is.na(Occupation) & !is.na(Contains.super))
+
+# Convert necessary columns to factors
+train_imputed <- train_imputed %>%
+  mutate(Gender = as.factor(Gender),
+         Occupation = as.factor(Occupation),
+         Contains.super = as.factor(Contains.super))
+```
+```{r}
+# Create the mosaic plot
+train_imputed %>% 
+  ggplot() +
+  geom_mosaic(aes(x = product(Gender, Occupation), fill = Gender)) +
+  facet_grid(. ~ Contains.super, scales = "free") +
+  labs(x = "Occupation", 
+       y = "Gender", 
+       title = "Mosaic Plot of Superstition") +
+  theme_minimal()+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 8))
+```
+
+# 4. Logistic Regression
+
+## 4.1. Women-Manipulate the data
+```{r}
+women_train_age <- train_imputed %>% 
+    filter(Gender == 'Female') %>% 
+    mutate(Shorter.lifespan = as.factor(Age.of.death < median(Age.of.death, na.rm = TRUE)))
+
+women_test_age <- test_age %>% 
+    filter(Gender == 'Female') %>% 
+    mutate(Shorter.lifespan = as.factor(Age.of.death < median(Age.of.death, na.rm = TRUE)))
+```
+
+### 4.1.1 Women LR - train
+```{r}
+women_model_1 <- glm(Shorter.lifespan ~ Contains.four, data = women_train_age, family = binomial)
+```
+```{r}
+women_train <- women_train_age %>% 
+  mutate(pred = predict(women_model_1, newdata = women_train_age, type = "response")) %>% 
+  mutate(
+    outcome = if_else(condition = pred > 0.5,
+                      true = 1,
+                      false = 0)
+  )
+```
+```{r}
+
+```
+
+
+
+## 4.1. Men-Manipulate the data
+```{r}
+women_train_age <- train_imputed %>% 
+    filter(Gender == 'Female') %>% 
+    mutate(Shorter.lifespan = as.factor(Age.of.death < median(Age.of.death, na.rm = TRUE)))
+```
+
