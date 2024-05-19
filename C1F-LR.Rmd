@@ -206,18 +206,49 @@ train_imputed %>%
 
 # 4. Logistic Regression
 
-## 4.1. Women-Manipulate the data
+### 4.1. Women LR 
+
+## 4.1.1. Women-Manipulate the data
+```{r}
+# Count and get the top 10 Occupations
+top_occupations_2 <- test_age %>%
+  count(Occupation) %>%
+  top_n(10, wt = n) %>%
+  pull(Occupation)
+
+# Count and get the top 10 Countries
+top_countries_2 <- test_age %>%
+  count(Country) %>%
+  top_n(10, wt = n) %>%
+  pull(Country)
+
+# Filter the train_age dataframe based on top Occupations and Countries
+top_filtered_2 <- test_age %>%
+  filter(Occupation %in% top_occupations_2) %>% 
+  filter(Country %in% top_countries_2)
+```
+```{r}
+# Filter out rows with missing values in the relevant columns
+test_imputed <- top_filtered_2 %>% 
+  filter(!is.na(Gender) & !is.na(Occupation) & !is.na(Contains.super))
+
+# Convert necessary columns to factors
+test_imputed <- test_imputed %>%
+  mutate(Gender = as.factor(Gender),
+         Occupation = as.factor(Occupation),
+         Contains.super = as.factor(Contains.super))
+```
 ```{r}
 women_train_age <- train_imputed %>% 
     filter(Gender == 'Female') %>% 
     mutate(Shorter.lifespan = as.factor(Age.of.death < median(Age.of.death, na.rm = TRUE)))
 
-women_test_age <- test_age %>% 
+women_test_age <- test_imputed %>% 
     filter(Gender == 'Female') %>% 
     mutate(Shorter.lifespan = as.factor(Age.of.death < median(Age.of.death, na.rm = TRUE)))
 ```
 
-### 4.1.1 Women LR - train
+### 4.1.2. modeling/pred - train
 ```{r}
 w_train_model <- glm(Contains.super ~ Age.of.death, data = women_train_age, family = "binomial")
 ```
@@ -243,16 +274,141 @@ w_train_preds %>%
     accuracy = total_correct/n()
   )
 ```
+
+### 4.1.3 cross validation1 - train
 ```{r}
+# Cost function for cross validation
+cost <- function(obs, pred) {
+  outcome <- pred > 0.5
+  return(1 - (sum(obs == outcome) / length(obs)))
+}
+
 logistic_sv1 <- cv.glm(women_train_age, w_train_model, cost, K = 5)
+
+logistic_sv1$delta
+```
+
+### 4.1.4. modeling/pred - test
+```{r}
+w_test_model <- glm(Contains.super ~ Age.of.death + Occupation + Country, 
+                    data = women_test_age, family = "binomial")
+```
+```{r}
+w_test_preds <-  women_test_age %>% 
+  add_predictions(w_test_model, type = "response") %>% 
+  mutate(
+    outcome = if_else(condition = pred > 0.5,
+                      true = 1,
+                      false = 0)
+  )
+
+w_test_preds %>% 
+  mutate(
+    correct = if_else(
+      condition = Contains.four == outcome,
+      true = 1,
+      false = 0
+    )
+  ) %>% 
+  summarize(
+    total_correct = sum(correct),
+    accuracy = total_correct/n()
+  )
+```
+
+### 4.1.5. cross validation2 - test
+```{r}
+# Cost function for cross validation
+cost <- function(obs, pred) {
+  outcome <- pred > 0.5
+  return(1 - (sum(obs == outcome) / length(obs)))
+}
+
+logistic_sv2 <- cv.glm(women_test_age, w_test_model, cost, K = 5)
+
+logistic_sv2$delta
+```
+
+### 4.2. Men LR 
+
+## 4.2.1.  Men-Manipulate the data
+```{r}
+men_train_age <- train_imputed %>% 
+    filter(Gender == 'Male') %>% 
+    mutate(Shorter.lifespan = as.factor(Age.of.death < median(Age.of.death, na.rm = TRUE)))
+
+men_test_age <- test_imputed %>% 
+    filter(Gender == 'Male') %>% 
+    mutate(Shorter.lifespan = as.factor(Age.of.death < median(Age.of.death, na.rm = TRUE)))
 ```
 
 
-
-## 4.1. Men-Manipulate the data
+### 4.2.2. modeling/pred - train
 ```{r}
-women_train_age <- train_imputed %>% 
-    filter(Gender == 'Female') %>% 
-    mutate(Shorter.lifespan = as.factor(Age.of.death < median(Age.of.death, na.rm = TRUE)))
+m_train_model <- glm(Contains.super ~ Age.of.death, data = men_train_age, family = "binomial")
+```
+```{r}
+m_train_preds <-  men_train_age %>% 
+  add_predictions(m_train_model, type = "response") %>% 
+  mutate(
+    outcome = if_else(condition = pred > 0.5,
+                      true = 1,
+                      false = 0)
+  )
+
+m_train_preds %>% 
+  mutate(
+    correct = if_else(
+      condition = Contains.four == outcome,
+      true = 1,
+      false = 0
+    )
+  ) %>% 
+  summarize(
+    total_correct = sum(correct),
+    accuracy = total_correct/n()
+  )
+```
+
+### 4.2.3. cross validation3 - train
+```{r}
+logistic_sv3 <- cv.glm(men_train_age, m_train_model, cost, K = 5)
+
+logistic_sv3$delta
+```
+
+### 4.2.4. modeling/pred - test
+```{r}
+m_test_model <- glm(Contains.super ~ Age.of.death + Occupation + Country,
+                    data = men_test_age, family = "binomial")
+```
+```{r}
+m_test_preds <-  men_test_age %>% 
+  add_predictions(m_test_model, type = "response") %>% 
+  mutate(
+    outcome = if_else(condition = pred > 0.5,
+                      true = 1,
+                      false = 0)
+  )
+
+m_test_preds %>% 
+  mutate(
+    correct = if_else(
+      condition = Contains.four == outcome,
+      true = 1,
+      false = 0
+    )
+  ) %>% 
+  summarize(
+    total_correct = sum(correct),
+    accuracy = total_correct/n()
+  )
+```
+
+### 4.2.5. cross validation3 - test
+```{r}
+logistic_sv4 <- cv.glm(men_test_age, m_test_model, cost, K = 5)
+
+logistic_sv4$delta
 ```
 
