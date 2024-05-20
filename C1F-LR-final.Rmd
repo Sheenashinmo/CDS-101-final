@@ -93,10 +93,104 @@ print("Training and testing datasets have been saved successfully.")
 > For the later part, logistic regression, we divded into 2 dataset, train_age & test_age.
 
 # 3. EDA
+```{r}
+AgeDataset_grouped <- AgeDataset %>%
+  group_by(Contains.four, Gender, Occupation) %>%
+  summarize(count = n(), .groups = 'drop')
+```
 
 ## 3.1. Occupation
 
+### 3.1.1 Filtering the top 20 Occupation
+```{r}
+AgeDataset_oc_count <- AgeDataset %>%
+	count(Occupation)
+```
+```{r}
+selected_occupations <- c("Artist", "Politician", "Athlete", "Researcher", "Military personnel",
+                          "Religious figure", "Businessperson", "Architect", "Journalist", "Teacher",
+                          "Physician", "Engineer", "Judge", "Lawyer", "Jurist", "Aristocrat", 
+                          "Entrepreneur", "Philosopher", "Translator")
+```
+
+### 3.1.2. Occupation Visualization
+```{r}
+AgeDataset_occupation <- AgeDataset %>%
+mutate(most = case_when(Occupation %in% selected_occupations ~ 1, TRUE ~ 0)) %>%
+ 	select(Id, Birth.year, Occupation, Contains.four, most)
+```
+
+```{r}
+oc_filtered_data <- AgeDataset_occupation[AgeDataset_occupation$most == 1, ]
+```
+
+```{r}
+oc_filtered_data %>%
+  ggplot() +
+  geom_bar(mapping = aes(x = Occupation, 
+                         fill = factor(Contains.four)), 
+           position = "stack") +
+  labs(title = "Top 20 Occupation", x = "Occupation", y = "Count") +
+ 	theme_minimal() +
+ 	scale_fill_discrete(name = "Contains Four")  +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+
 ## 3.2. Manner of death
+```{r}
+AgeDataset_mod <- AgeDataset %>%
+  select(Id, Birth.year, Manner.of.death, Contains.four)
+```
+
+### 3.2.1 Cleaning the Data
+```{r}
+mod_mutated <- AgeDataset_mod %>%
+  mutate(clean_mod = 
+ifelse(grepl("capital punishment", Manner.of.death), "capital punishment",
+ifelse(grepl("homicide", Manner.of.death), "homicide",
+ifelse(grepl("accident", Manner.of.death), "accident",
+ifelse(grepl("natural causes", Manner.of.death), "natural causes",
+ifelse(grepl("suicide", Manner.of.death), "suicide",
+ifelse(grepl("unnatural death", Manner.of.death), "unnatural death",
+ifelse(grepl("war", Manner.of.death), "war", Manner.of.death))))))))
+
+```
+
+### 3.2.2. Filtering the top 20 MOD
+```{r}
+mod_counted <- mod_mutated %>%
+  count(clean_mod)
+```
+
+```{r}
+selected_mod <- 
+  c("natural causes", "suicide", "accident", "homicide", "capital punishment", 
+    "unnatural death", "death in battle", "war", "extrajudicial killing")
+```
+
+### 3.2.3. MOD Visualization
+```{r}
+mod_selected <- mod_mutated %>%
+            mutate(top10 = case_when(Manner.of.death %in% selected_mod ~ 1, TRUE ~ 0))
+
+```
+
+```{r}
+filtered_mod <- mod_selected[mod_selected$top10 == 1, ]
+```
+
+```{r}
+filtered_mod %>%
+  ggplot() +
+  geom_bar(mapping = aes(x = clean_mod,
+                       fill = factor(Contains.four)),
+           position = "stack") +
+  labs(title = "Top 10 Manner of Death", x = "Manner of Death", y = "Count") +	
+  theme_minimal() +
+  scale_fill_discrete(name = "Contains Four")  +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
 
 # 4. Hypothesis test
 
